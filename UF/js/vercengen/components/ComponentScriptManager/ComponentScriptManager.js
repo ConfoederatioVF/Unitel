@@ -196,17 +196,7 @@ ve.ScriptManager = class extends ve.Component {
           this._settings.project_folder = new_folder_path;
 					ve.ScriptManager._indexDocumentation.call(this, this.bottombar_status_el);
           ve.ScriptManager._saveConfig.call(this);
-
-          //Save settings
-          let dirname = path.dirname(scriptmanager_settings.save_file);
-          fs.mkdir(dirname, { recursive: true }, (err) => {
-            if (err) {
-              console.error(err);
-              return;
-            }
-            fs.writeFileSync(scriptmanager_settings.save_file, this.saveSettings());
-          });
-
+          ve.ScriptManager.saveSettings();
 					veToast(loc("ve.registry.localisation.ScriptManager_toast_changed_project_folder", new_folder_path));
 				}, { 
 					name: "<icon>gite</icon>",
@@ -796,12 +786,11 @@ ve.ScriptManager = class extends ve.Component {
 						this.element.removeAttribute("data-background-image");
 					}
 				if (settings_obj.project_folder) {
-          //Set project folder
-					let project_folder = (fs.existsSync(settings_obj.project_folder) && fs.statSync(settings_obj.project_folder).isDirectory()) ?
+          let project_folder = (fs.existsSync(settings_obj.project_folder) && fs.statSync(settings_obj.project_folder).isDirectory()) ?
 						settings_obj.project_folder : "none";
           
+					settings_obj.project_folder = project_folder;
           this.config.project_folder = project_folder;
-          settings_obj.project_folder = project_folder;
         }
 				if (settings_obj.monaco_theme)
 					this.setCodeEditorTheme(settings_obj.monaco_theme);
