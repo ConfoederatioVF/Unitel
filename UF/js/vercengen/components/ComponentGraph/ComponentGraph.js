@@ -21,9 +21,11 @@
  *   - `.x`: {@link number}
  *   - `.y`: {@link number}
  * 
+ * @augments ve.Component
+ * @memberof ve.Component
  * @type {ve.Graph}
  */
-ve.Graph = class extends ve.Component {
+ve.Graph = class extends ve.Component { //[WIP] - Flatten all <key_name>.symbol keys into a single .symbol that contains all Echarts Options; Remove private _get functions to make things more straightforwards
 	constructor (arg0_value, arg1_options) {
 		//Convert from parameters
 		let value = (arg0_value) ? arg0_value : {};
@@ -32,6 +34,14 @@ ve.Graph = class extends ve.Component {
 		
 		//Initialise options
 		options.attributes = (options.attributes) ? options.attributes : {};
+		if (!options.symbol) options.symbol = {};
+			if (!options.symbol.polar) options.symbol.polar = {};
+			if (!options.symbol.xAxis) options.symbol.xAxis = {};
+				if (options.symbol.xAxis.boundaryGap === undefined) options.symbol.xAxis.boundaryGap = false;
+				if (options.symbol.xAxis.type === undefined) options.symbol.xAxis.type = "category";
+				
+			if (!options.symbol.yAxis) options.symbol.yAxis = {};
+				if (options.symbol.yAxis.type === undefined) options.symbol.yAxis.type = "value";
 		if (!options.type) options.type = "line_chart";
 			
 		//Declare local instance variables
@@ -45,106 +55,6 @@ ve.Graph = class extends ve.Component {
 		this.from_binding_fire_silently = true;
 		this.v = value;
 		delete this.from_binding_fire_silently;
-	}
-	
-	_getAxisStyle () {
-		//Declare local instance variables
-		let root_style = window.getComputedStyle(document.body);
-		
-		//Return statement
-		return {
-			color: (this.options?.textStyle?.color) ?
-				this.options.textStyle.color : root_style.getPropertyValue("--body-colour")
-		};
-	}
-	
-	_getTitleStyle () {
-		//Declare local instance variables
-		let root_style = window.getComputedStyle(document.body);
-		
-		//Return statement
-		return {
-			color: (this.options?.title?.textStyle?.color) ?
-				this.options.title.textStyle.color : root_style.getPropertyValue("--header-colour"),
-			fontFamily: (this.options?.title?.textStyle?.fontFamily) ?
-				this.options.title.textStyle.fontFamily : root_style.getPropertyValue("--header-font-family")
-		};
-	}
-	
-	draw () { //[WIP] - Finish function body
-		//Declare local instance variables
-		let has_coords = (this.x !== undefined || this.y !== undefined);
-		let root_style = window.getComputedStyle(document.body);
-		
-		//this.element.innerHTML = "";
-		if (has_coords) {
-			this.element.style.position = "absolute";
-			
-			this.element.style.left = (typeof this.x === "number") ? `${this.x}px` : this.x;
-			this.element.style.top = (typeof this.y === "number") ? `${this.y}px` : this.y;
-			
-			this.element.style.height = (typeof this.height === "number") ? `${this.height}px` : this.height;
-			this.element.style.width = (typeof this.width === "number") ? `${this.width}px` : this.width;
-		} else {
-			this.element.style.height = "100%";
-			this.element.style.width = "100%";
-		}
-		
-		//Draw chart
-		if (this.chart) this.chart.clear();
-		this.chart = echarts.init(this.element, null, {
-			renderer: "canvas",
-			useDirtyRect: false
-		});
-		this.chart_options = {};
-		this.chart_options.series = [];
-		this.chart_options.title = {
-			text: (this.options?.title?.text) ? this.options.title.text : "",
-			textStyle: this._getTitleStyle()
-		};
-		
-		if (this.options.type === "line_chart" || !this.options.type) {
-			this.chart_options.xAxis = {
-				boundaryGap: false,
-				type: "category",
-				
-				axisLabel: this._getAxisStyle(),
-				axisLine: {
-					lineStyle: this._getAxisStyle()
-				}
-			};
-			this.chart_options.yAxis = {
-				type: "value",
-				
-				axisLabel: this._getAxisStyle(),
-				axisLine: {
-					lineStyle: this._getAxisStyle()
-				}
-			};
-			
-			if (this.value.series)
-				Object.iterate(this.value.series, (local_key, local_value) => {
-					let local_data = local_value.value;
-							
-					//Create new this.chart_options.series
-					for (let i = 0; i < local_data.length; i++)
-						this.chart_options.series.push({
-							name: (local_value.name) ? local_value.name : local_key,
-							data: local_data[i],
-							type: "line",
-							
-							areaStyle: {
-								color: "transparent"
-							},
-							emphasis: { focus: "series" },
-							stack: local_key
-						});
-				});
-			
-			this.chart.setOption(this.chart_options);
-		}
-		
-		this.chart.resize();
 	}
 	
 	get v () {
@@ -205,13 +115,86 @@ ve.Graph = class extends ve.Component {
 			
 		}
 		
+		//Concatenate with .symbol
+		return_obj.symbol = series_obj.symbol;
+		
 		//Set new series and draw
 		this.value.series[series_key] = return_obj;
 		this.draw();
 		
+		console.log(`Input series_obj:`, series_obj);
 		console.log(`Output series_obj:`, return_obj);
 		
 		//Return statement
 		return this.value.series[series_key];
+	}
+	
+	draw () { //[WIP] - Finish function body
+		//Declare local instance variables
+		let has_coords = (this.x !== undefined || this.y !== undefined);
+		let root_style = window.getComputedStyle(document.body);
+		
+		//this.element.innerHTML = "";
+		this.element.style.position = "absolute";
+		if (has_coords) {
+			this.element.style.left = (typeof this.x === "number") ? `${this.x}px` : this.x;
+			this.element.style.top = (typeof this.y === "number") ? `${this.y}px` : this.y;
+			
+			this.element.style.height = (typeof this.height === "number") ? `${this.height}px` : this.height;
+			this.element.style.width = (typeof this.width === "number") ? `${this.width}px` : this.width;
+		} else {
+			this.element.style.height = "100%";
+			this.element.style.width = `100%`;
+		}
+		
+		//Draw chart
+		if (this.chart) this.chart.clear();
+		this.chart = echarts.init(this.element, null, {
+			renderer: "canvas",
+			useDirtyRect: false
+		});
+		this.chart_options = {};
+			Object.iterate(this.options.symbol, (local_key, local_value) => {
+				if (Object.keys(local_value).length > 0)
+					this.chart_options[local_key] = local_value;
+			});
+			if (!this.chart_options?.polar?.type) delete this.chart_options.polar;
+			if (!this.chart_options?.xAxis?.type) delete this.chart_options.xAxis;
+			if (!this.chart_options?.yAxis?.type) delete this.chart_options.yAxis;
+		this.chart_options.series = [];
+		
+		if (this.value.series)
+			Object.iterate(this.value.series, (local_key, local_value) => {
+				let local_data = local_value.value;
+				
+				//Create new this.chart_options.series
+				for (let i = 0; i < local_data.length; i++)
+					this.chart_options.series.push({
+						name: (local_value.name) ? local_value.name : local_key,
+						data: local_data[i],
+						type: "line",
+						
+						areaStyle: {
+							color: "transparent"
+						},
+						emphasis: { focus: "series" },
+						stack: local_key,
+						...local_value.symbol
+					});
+			});
+		
+		try {
+			this.chart.setOption(this.chart_options);	
+		} catch (e) {
+			console.error(`Echarts options error:`, e, `\n- Options object:`, this.chart_options);
+		}
+		//}
+		
+		this.chart.resize();
+	}
+	
+	static getDefaultColours () {
+		//Return statement
+		return ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'];
 	}
 };

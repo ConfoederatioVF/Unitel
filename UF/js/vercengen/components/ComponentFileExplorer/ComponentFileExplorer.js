@@ -51,6 +51,7 @@ ve.FileExplorer = class extends ve.Component {
 	constructor (arg0_value, arg1_options) {
 		//Convert from parameters
 		let value = (arg0_value) ? arg0_value : process.cwd();
+			if (!fs.existsSync(value)) value = process.cwd();
 		let options = (arg1_options) ? arg1_options : {};
 			super(options);
 			
@@ -97,7 +98,7 @@ ve.FileExplorer = class extends ve.Component {
 				disable_actions: true,
 				file_components_obj: {},
 				folder_components_obj: {},
-				onload: (e) => e.name = ""
+				onload: (v, e) => e.name = ""
 			};
 		
 		//Declare local instance variables
@@ -291,7 +292,7 @@ ve.FileExplorer = class extends ve.Component {
 		if (!this.options.disable_actions)
 			hierarchy_obj.selection = new ve.HierarchyDatatype({
 				information: new ve.HTML((e) => `${(this.clipboard.length > 0) ? `${loc("ve.registry.localisation.FileExplorer_clipboard")} (${String.formatNumber(this.clipboard.length)})` : loc("ve.registry.localisation.FileExplorer_clipboard_is_empty")} &nbsp; | &nbsp; ${(this.selected.length > 0) ? `${loc("ve.registry.localisation.FileExplorer_elements_selected", String.formatNumber(this.selected.length))}` : ""}
-				`, { style: { marginRight: "auto", padding: 0 }}), //[WIP] - Fix localisation
+				`, { style: { marginRight: "auto", padding: 0 }}),
 				actions_menu: new ve.RawInterface({
 					copy_button: new ve.Button((e) => {
 						if (this.selected.length === 0) return; //Internal guard clause if nothing is selected
@@ -318,7 +319,7 @@ ve.FileExplorer = class extends ve.Component {
 							resizeable: true, 
 							width: "24rem" 
 						});
-					}, { name: "<icon>cut</icon>", limit: () => this.selected.length, tooltip: "Cut Selected" }),
+					}, { name: "<icon>cut</icon>", limit: () => this.selected.length, tooltip: loc("ve.registry.localisation.FileExplorer_cut_selected") }),
 					paste_button: new ve.Button((e) => {
 						let confirm = new ve.Confirm(loc("ve.registry.localisation.FileExplorer_are_you_sure_copy_paste", String.formatNumber(this.clipboard.length), this.v), {
 							name: loc("ve.registry.localisation.FileExplorer_paste_files", String.formatNumber(this.clipboard.length)),
@@ -351,7 +352,7 @@ ve.FileExplorer = class extends ve.Component {
 							resizeable: true, 
 							width: "24rem"
 						});
-					}, { name: "<icon>arrow_forward</icon>", limit: () => this.selected.length, tooltip: "Move Selected" }),
+					}, { name: "<icon>arrow_forward</icon>", limit: () => this.selected.length, tooltip: loc("ve.registry.localisation.move_selected") }),
 					delete_button: new ve.Button((e) => {
 						let confirm = new ve.Confirm(loc("ve.registry.localisation.FileExplorer_are_you_sure_delete", this.selected.join(", ")), {
 							name: loc("ve.registry.localisation.FileExplorer_delete_files", String.formatNumber(this.selected.length)),
@@ -360,7 +361,7 @@ ve.FileExplorer = class extends ve.Component {
 								ve.FileExplorer.delete(this.selected, () => this.refresh());
 							}
 						});
-					}, { name: "<icon>delete</icon>", limit: () => this.selected.length, tooltip: "Delete Selected" }),
+					}, { name: "<icon>delete</icon>", limit: () => this.selected.length, tooltip: loc("ve.registry.localisation.FileExplorer_delete_selected") }),
 					
 					new_folder_button: new ve.Button((e) => {
 						let local_modal = new ve.Window({
@@ -421,7 +422,7 @@ ve.FileExplorer = class extends ve.Component {
 			hierarchy_obj.save_button.element.onclick = () => {
 				let local_modal = new ve.Window({
 					html: new ve.HTML(loc("ve.registry.localisation.FileExplorer_save_file_as")),
-					new_file_name: new ve.Text(`autosave${(this.options.save_extension[0]) ? this.options.save_extension[0] : ""}`, { name: " " }),
+					new_file_name: new ve.Text(`autosave${(this.options?.save_extension?.[0]) ? this.options.save_extension[0] : ""}`, { name: " " }),
 					confirm_button: new ve.Button((e) => {
 						let save_file_name = path.join(this.v, local_modal.new_file_name.v);
 						
@@ -641,8 +642,6 @@ ve.FileExplorer = class extends ve.Component {
 		this.hierarchy = new ve.Hierarchy(hierarchy_obj, { disable_searchbar: true });
 		file_explorer_el.innerHTML = "";
 		file_explorer_el.appendChild(this.hierarchy.element);
-		
-		//[WIP] - Set .name.options.onuserchange listener for all this.hierarchy.components_obj
 		
 		setTimeout(() => {
 			this.hierarchy.setOwner(this.owner, [this.owner]);

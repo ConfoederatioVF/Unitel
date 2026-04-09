@@ -32,7 +32,7 @@
 	 * 
 	 * @returns {Feature[]}
 	 */
-	Geospatiale.splitFeature = function (arg0_feature, arg1_divisor_layer) { //[WIP] - Untested function
+	Geospatiale.splitFeature = function (arg0_feature, arg1_divisor_layer) {
 		//Convert from parameters
 		let feature = arg0_feature;
 		let divisor_layer = arg1_divisor_layer;
@@ -81,6 +81,40 @@
 		
 		//Return statement
 		return feature_pieces;
+	};
+	
+	/**
+	 * Sorts Maptalks geometries in order from bottom-top (Polygon, LineString, Point)
+	 * 
+	 * @param {maptalks.Geometry[]} arg0_geometries
+	 */
+	Geospatiale.sortGeometries = function (arg0_geometries) {
+		//Convert from parameters
+		let geometries = (arg0_geometries) ? arg0_geometries : [];
+		
+		//Declare local instance variables
+		let geometry_types = {
+			polygon: [],
+			line: [],
+			point: []
+		};
+		
+		//Iterate over all geometries and sort it
+		for (let i = 0; i < geometries.length; i++)
+			if (geometries[i] instanceof maptalks.Polygon) {
+				geometry_types.polygon.push(geometries[i]);
+			} else if (geometries[i] instanceof maptalks.LineString) {
+				geometry_types.line.push(geometries[i]);
+			} else {
+				geometry_types.point.push(geometries[i]);
+			}
+		
+		//Return statement
+		return [
+			...geometry_types.polygon,
+			...geometry_types.line,
+			...geometry_types.point
+		];
 	};
 	
 	/**

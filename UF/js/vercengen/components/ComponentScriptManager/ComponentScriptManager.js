@@ -10,6 +10,7 @@
  * ##### Constructor:
  * - `arg0_value`: {@link string} - The code to load into the present ve.ScriptManager.
  * - `arg1_options`: {@link Object}
+ *   - `.do_not_allow_other_instances=false`: {@link boolean} - Whether to allow other instances.
  *   - `.do_not_auto_detect_project=false`: {@link boolean} - Whether to attempt to read from the base `.ve-sm` file upon initialisation.
  *   - `.do_not_cache_file_explorer=false`: {@link boolean} - Whether the file directory should remain the same as when last opened.
  *   - `.do_not_display_file_name=false`: {@link boolean}
@@ -42,6 +43,8 @@
  * - `._settings`: {@link Object}
  *
  * ##### Methods:
+ * - <span color=00ffff>{@link ve.ScriptManager._drawHeight|drawHeight}</span>()
+ * - <span color=00ffff>{@link ve.ScriptManager.loadFile|loadFile}</span>(arg0_file_path:{@link string}, arg1_file_data:{@link string}, arg2_do_not_add_to_bottombar:{@link boolean})
  * - <span color=00ffff>{@link ve.ScriptManager.loadSettings|loadSettings}</span>(arg0_settings:{@link Object})
  * - <span color=00ffff>{@link ve.ScriptManager.saveSettings|saveSettings}</span>() | {@link string}
  * - <span color=00ffff>{@link ve.ScriptManager.setCodeEditorTheme|setCodeEditorTheme}</span>(arg0_theme_class:{@link string})
@@ -60,14 +63,15 @@ ve.ScriptManager = class extends ve.Component {
 		//Convert from parameters
 		let value = arg0_value;
 		let options = (arg1_options) ? arg1_options : {};
-		super(options);
+			super(options);
 		
 		//Initialise options
 		options.attributes = (options.attributes) ? options.attributes : {};
-		if (options.name === undefined) options.name = "ScriptManager";
+		if (options.name === undefined) options.name = loc("ve.registry.localisation.ScriptManager_name_default");
 		if (options.style === undefined) options.style = {};
 		
 		//Declare local instance variables
+		this._instances = [];
 		this._monaco_themes = ve.ScriptManager._getMonacoThemes();
 		this._selected_view = "monaco";
 		this._settings = {
@@ -90,10 +94,14 @@ ve.ScriptManager = class extends ve.Component {
 			view_file_explorer: true
 		};
 		this.config = {
-			files: {}
+			files: {},
+			view_states: {}
 		};
 		this.id = Class.generateRandomID(ve.ScriptManager);
 		this.options = options;
+		
+		//Load console channel for ScriptManager
+		if (!log.scriptmanager) new log.Channel("scriptmanager", { colour: "powderblue" });
 		
 		let scriptmanager_settings = ve.registry.settings.ScriptManager;
 		
@@ -111,40 +119,10 @@ ve.ScriptManager = class extends ve.Component {
 			};
 		try { Blockly.mainWorkspace.clear(); } catch (e) {}
 		
-		this.console_el = document.createElement("div");
-		this.console_el.print = (arg0_message, arg1_type) => {
-			//Convert from parameters
-			let message = (arg0_message) ? arg0_message : "";
-			let type = (arg1_type) ? arg1_type : "message";
-			
-			//Declare local instance variables
-			let local_msg_el = document.createElement("div");
-				local_msg_el.classList.add(type);
-				if (type === "error" && typeof message === "object" && message?.stack)
-					message = message.stack;
-					
-				if (typeof message === "string") {
-					local_msg_el.innerText = message;
-				} else {
-					let local_object_inspector = new ve.ObjectInspector(message);
-					
-					if (
-						local_object_inspector.element.innerHTML.length > 10000 && 
-						this._settings.log_large_objects_in_console === false
-					) {
-						veConfirm(loc("ve.registry.localisation.ScriptManager_object_to_be_logged", 10000/1000), {
-							special_function: () => local_object_inspector.bind(local_msg_el)
-						});
-					} else {
-						local_object_inspector.bind(local_msg_el);
-					}
-				}
-			this.console_el.appendChild(local_msg_el);
-		};
 		this.element = document.createElement("div");
-		this.element.setAttribute("component", "ve-script-manager");
-		this.element.instance = this;
-		this.element.style.padding = "0";
+			this.element.setAttribute("component", "ve-script-manager");
+			this.element.instance = this;
+			this.element.style.padding = "0";
 		if (this.options.attributes)
 			Object.iterate(this.options.attributes, (local_key, local_value) => {
 				this.element.setAttribute(local_key, local_value.toString());
@@ -172,7 +150,7 @@ ve.ScriptManager = class extends ve.Component {
 				if (this.file_context_menu) this.file_context_menu.close();
 				this.file_context_menu = new ve.ContextMenu({
 					override_file_type: new ve.Select(ve.ScriptManager._getFileExtensions({ return_select_obj: true }), {
-						name: "Mark as File Type",
+						name: loc("ve.registry.localisation.ScriptManager_mark_as_file_type"),
 						limit: () => is_file,
 						selected: (local_file_obj.type) ? local_file_obj.type : default_file_extension,
 						
@@ -181,7 +159,7 @@ ve.ScriptManager = class extends ve.Component {
 					mark_source_as_excluded: new ve.Button(() => {
 						ve.ScriptManager._setSourceAsMode.call(this, local_file_path, "excluded");
 					}, {
-						name: "Mark Source as Excluded",
+						name: loc("ve.registry.localisation.ScriptManager_mark_excluded"),
 						style: {
 							textAlign: "left",
 							whiteSpace: "nowrap"
@@ -190,7 +168,7 @@ ve.ScriptManager = class extends ve.Component {
 					mark_source_as_included: new ve.Button(() => {
 						ve.ScriptManager._setSourceAsMode.call(this, local_file_path, "default");
 					}, {
-						name: "Mark Source as Included",
+						name: loc("ve.registry.localisation.ScriptManager_mark_included"),
 						style: {
 							textAlign: "left",
 							whiteSpace: "nowrap"
@@ -202,7 +180,7 @@ ve.ScriptManager = class extends ve.Component {
 				});
 			}, {
 				name: "<icon>more_vert</icon>",
-				tooltip: "Edit Properties",
+				tooltip: loc("ve.registry.localisation.ScriptManager_tooltip_edit_properties"),
 				style: {
 					paddingBottom: `var(--cell-padding)`,
 					paddingTop: `var(--cell-padding)`
@@ -217,10 +195,10 @@ ve.ScriptManager = class extends ve.Component {
 					this.config.project_folder = new_folder_path;
 					ve.ScriptManager._indexDocumentation.call(this, this.bottombar_status_el);
           ve.ScriptManager._saveConfig.call(this);
-					veToast(`Changed project folder to ${new_folder_path}`);
+					veToast(loc("ve.registry.localisation.ScriptManager_toast_changed_project_folder", new_folder_path));
 				}, { 
 					name: "<icon>gite</icon>",
-					tooltip: "Set as Project Folder",
+					tooltip: loc("ve.registry.localisation.ScriptManager_tooltip_set_project_folder"),
 					limit: () => (path.resolve(this.leftbar_file_explorer.v) !== this.config.project_folder)
 				})
 			},
@@ -298,7 +276,7 @@ ve.ScriptManager = class extends ve.Component {
 				try {
 					this.scene_monaco.editor.addAction({
 						id: "open-project-find-and-replace",
-						label: "Open Project Find and Replace",
+						label: loc("ve.registry.localisation.ScriptManager_action_find_replace"),
 						keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF],
 						contextMenuGroupId: "1_modification",
 						run: (ed) => {
@@ -316,22 +294,19 @@ ve.ScriptManager = class extends ve.Component {
 		this.scene_tabs_el = document.createElement("div");
 		this.scene_tabs_el.id = "scene-tabs";
 		
-		this.scene_interface = new ve.FlexInterface({
+		//Initialise scene_interface now, but only append its components upon this.scriptmanager_initialisation_loop
+		this.scene_interface = new ve.FlexInterface({ 
 			type: "horizontal",
 			blockly: this.scene_blockly,
 			monaco: this.scene_monaco
 		}, {
-			name: "ScriptManagerInterface"
+			name: "ScriptManagerInterface",
 		});
 		
 		this.scene_el.append(this.scene_interface.element, this.scene_tabs_el);
 		this.topbar_el = document.createElement("div");
 		this.topbar_el.id = "topbar";
 		
-		this.console_html = new ve.HTML(this.console_el, {
-			attributes: { "class": "ve-script-manager-console" },
-			x: 0, y: 0
-		});
 		this.topbar_interface = new ve.RawInterface({
 			name_el: new ve.HTML(() => {
 				return [
@@ -349,7 +324,7 @@ ve.ScriptManager = class extends ve.Component {
 				this.settings_window = new ve.Window({
 					appearance: new ve.Interface({
 						background: new ve.Text(this._settings.background_image, {
-							name: "Background",
+							name: loc("ve.registry.localisation.ScriptManager_background"),
 							onuserchange: (v) => {
 								if (v.isURL()) v = `url(${v})`;
 								
@@ -361,14 +336,14 @@ ve.ScriptManager = class extends ve.Component {
 							}
 						}),
 						background_colour: new ve.Colour(this._settings.background_colour, {
-							name: "Background Colour",
+							name: loc("ve.registry.localisation.ScriptManager_background_colour"),
 							onuserchange: (v, e) => {
 								this._settings.background_colour = e.getHex();
 								this.loadSettings({ background_colour: this._settings.background_colour });
 							}
 						}),
 						background_opacity: new ve.Range(Math.returnSafeNumber(this._settings.background_opacity, 0.5), {
-							name: "Background Opacity",
+							name: loc("ve.registry.localisation.ScriptManager_background_opacity"),
 							onuserchange: (v) => {
 								this._settings.background_opacity = v;
 								this.loadSettings({ background_opacity: this._settings.background_opacity });
@@ -376,7 +351,7 @@ ve.ScriptManager = class extends ve.Component {
 						}),
 						
 						scene_height: new ve.Number(Math.returnSafeNumber(this._settings.scene_height, 0), {
-							name: "Scene height (px)",
+							name: loc("ve.registry.localisation.ScriptManager_scene_height_px"),
 							min: 0,
 							onuserchange: (v) => {
 								if (v === 0) {
@@ -388,31 +363,31 @@ ve.ScriptManager = class extends ve.Component {
 								this._drawHeight();
 							}
 						}),
-					}, { name: "Appearance" }),
+					}, { name: loc("ve.registry.localisation.ScriptManager_appearance") }),
 					monaco_settings: this.scene_monaco.drawOptionsInterface({
-						name: "Editor (Code)"
+						name: loc("ve.registry.localisation.ScriptManager_editor_code")
 					}),
 					features: new ve.Interface({
 						autosave_projects: new ve.Toggle(this._settings.autosave_projects, {
-							name: "Autosave projects",
+							name: loc("ve.registry.localisation.ScriptManager_autosave_projects"),
 							onuserchange: (v) => this._settings.autosave_projects = v
 						}),
 						index_documentation: new ve.Toggle(this._settings.index_documentation, {
-							name: "Index documentation",
+							name: loc("ve.registry.localisation.ScriptManager_index_documentation"),
 							onuserchange: (v) => {
 								this._settings.index_documentation = v;
 								if (v) ve.ScriptManager._indexDocumentation.call(this, this.bottombar_status_el);
 							}
 						}),
 						log_large_objects_in_console: new ve.Toggle(this._settings.log_large_objects_in_console, {
-							name: "Log large objects in console without confirmation",
+							name: loc("ve.registry.localisation.ScriptManager_log_large_objects_confirm"),
 							onuserchange: (v) => this._settings.log_large_objects_in_console = v
 						}),
 						manual_synchronisation: new ve.Toggle(this._settings.manual_synchronisation, {
-							name: "Manual synchronisation",
+							name: loc("ve.registry.localisation.ScriptManager_manual_synchronisation"),
 							onuserchange: (v) => this._settings.manual_synchronisation = v
 						}),
-					}, { name: "Features" }),
+					}, { name: loc("ve.registry.localisation.ScriptManager_features") }),
 					
 					actions_bar: new ve.RawInterface({
 						load_settings: new ve.File(undefined, {
@@ -506,8 +481,24 @@ ve.ScriptManager = class extends ve.Component {
 					open_project_find_and_replace: new ve.Button(() => {
 						this._openFindAndReplace.call(this);
 					}, {
-						name: "Open Project Find & Replace"
+						name: loc("ve.registry.localisation.ScriptManager_open_find_replace")
 					}),
+					split_instance: new ve.Button(() => {
+						this._instances.push(new ve.Window(new ve.ScriptManager, {
+							...this.options.window_options
+						}));
+					}, {
+						name: loc("ve.registry.localisation.ScriptManager_split_instance"),
+            limit: () => (!this.options.do_not_allow_other_instances)
+					}),
+          split_node_editor: new ve.Button(() => {
+            this._instances.push(new ve.Window(new ve.NodeEditor, {
+              ...this.options.window_options
+            }));
+          }, {
+            name: loc("ve.registry.localisation.ScriptManager_split_node_editor"),
+            limit: () => (!this.options.do_not_allow_other_instances)
+          }),
 					
 					display_load_errors: new ve.Toggle(this._settings.display_load_errors, {
 						name: loc("ve.registry.localisation.ScriptManager_display_load_errors"),
@@ -524,14 +515,14 @@ ve.ScriptManager = class extends ve.Component {
 			}, { name: loc("ve.registry.localisation.ScriptManager_view"), x: 0, y: 2 }),
 			run: new ve.Button(() => {
 				let local_context_menu = new ve.ContextMenu({
-					run_header: new ve.HTML(`<b>${loc("ve.registry.localisation.ScriptManager_run_settings")}</b><br>`, { x: 0, y: 0 }),
+					run_header: new ve.HTML(`<b>${loc("ve.registry.localisation.ScriptManager_view_settings")}</b><br>`, { x: 0, y: 0 }),
 					
 					warning: new ve.HTML(`<div style = "align-items: center; display: flex"><icon style = "width: auto;">info</icon><b style = "margin-left: calc(var(--padding)*0.5);">${loc("ve.registry.localisation.ScriptManager_note")}</b></div><span>${loc("ve.registry.localisation.ScriptManager_trust_warning")}</span><br><br>`),
 					run_this_file_button: new ve.Button(() => {
 						try {
 							eval(this.v);
 						} catch (e) {
-							this.console_el.print(e, "error");
+							log.scriptmanager_error(e, "error");
 						}
 					}, { name: loc("ve.registry.localisation.ScriptManager_run_current_file") })
 				}, { id: "script_manager_run" });
@@ -539,49 +530,7 @@ ve.ScriptManager = class extends ve.Component {
 			console: new ve.Button(() => {
 				if (this.local_console) this.local_console.close();
 				this.local_console = new ve.Window({
-					console_el: this.console_html,
-					actions_bar: new ve.RawInterface({
-						console_command: new ve.Text("", {
-							attributes: { placeholder: loc("ve.registry.localisation.ScriptManager_enter_console_command") },
-							name: " ",
-							style: { 
-								display: "inline",
-								'input[type="text"]': {
-									maxWidth: "30rem"
-								}
-							}
-						}),
-						send_command: new ve.Button(() => {
-							//Declare local instance variables
-							let command_value = this.local_console.actions_bar.console_command.v;
-							
-							if (command_value.length > 0) try {
-								this.console_el.print(command_value, "user-command");
-								eval(command_value);
-							} catch (e) {
-								this.console_el.print(e, "error");
-							}
-						}, { name: loc("ve.registry.localisation.ScriptManager_send") }),
-						information: new ve.Button(() => {
-							this.console_el.print(loc("ve.registry.localisation.ScriptManager_help_menu"));
-							this.console_el.print(`- this.console_el.print(arg0_message:string, arg1_type:string) - Prints a message to the console.`);
-							this.console_el.print(`- - arg1_type: 'error'/'info'`);
-						}, {
-							name: loc("ve.registry.localisation.ScriptManager_help"),
-							tooltip: loc("ve.registry.localisation.ScriptManager_prints_help_information")
-						}),
-						clear_console: new ve.Button(() => {
-							let local_confirm_modal = new ve.Confirm(loc("ve.registry.localisation.ScriptManager_are_you_sure_clear_console"), {
-								special_function: () => this.console_el.innerHTML = ""
-							});
-						}, { name: loc("ve.registry.localisation.ScriptManager_clear_console") }),
-					}, {
-						style: {
-							alignItems: "center",
-							display: "flex"
-						},
-						name: " "
-					})
+					log: new ve.Log("scriptmanager")
 				}, {
 					can_rename: false,
 					do_not_wrap: true,
@@ -624,6 +573,12 @@ ve.ScriptManager = class extends ve.Component {
 		this._is_file_saved = false;
 		this.logic_loop = setInterval(() => {
 			ve.ScriptManager._projectLogicLoop.call(this);
+			if (!this.element.contains(this.scene_blockly.element))
+				this.scene_interface.v = {
+					type: "horizontal",
+					blockly: this.scene_blockly,
+					monaco: this.scene_monaco
+				};
 		}, 100);
 		
 		//Populate element and initialise handlers
@@ -665,52 +620,65 @@ ve.ScriptManager = class extends ve.Component {
 	 * @param {string} arg0_value
 	 */
 	set v (arg0_value) {
-		//Convert from parameters
-		let local_value = (arg0_value) ? arg0_value : "";
+		let local_value = arg0_value ? arg0_value : "";
 		
-		//Declare local instance variables
-		let set_value_loop = setInterval(() => {
+		// Helper to update views
+		const updateViews = () => {
 			this.scene_blockly.show();
 			
-			if (this.scene_monaco?.editor) try {
-				//Set new code value
-				if (!this.scene_blockly._hidden) {
+			if (this.scene_monaco?.editor) {
+				try {
+					if (!this.scene_blockly._hidden) {
+						this.scene_blockly.enable();
+						this.scene_blockly.to_binding_fire_silently = true;
+						js2blocks.parseCode(local_value);
+						setTimeout(() => delete this.scene_blockly.to_binding_fire_silently);
+					}
+					this.scene_monaco.to_binding_fire_silently = true;
+					this.scene_monaco.v = local_value;
+					delete this.scene_monaco.to_binding_fire_silently;
+					this.fireFromBinding();
+				} catch (e) {
+					if (this._settings.display_load_errors)
+						log.scriptmanager(
+							loc("ve.registry.localisation.ScriptManager_error_parsing_es6", e.toString()),
+							"error"
+						);
+					
+					this.scene_blockly.hide();
 					this.scene_blockly.enable();
-					this.scene_blockly.to_binding_fire_silently = true;
-					js2blocks.parseCode(local_value);
-					setTimeout(() => delete this.scene_blockly.to_binding_fire_silently);
+					js2blocks.parseCode("");
+					this.scene_blockly.disable();
+					
+					this.scene_monaco.to_binding_fire_silently = true;
+					this.scene_monaco.v = local_value;
+					delete this.scene_monaco.to_binding_fire_silently;
+					this.fireFromBinding();
 				}
-				this.scene_monaco.to_binding_fire_silently = true;
-				this.scene_monaco.v = local_value;
-				delete this.scene_monaco.to_binding_fire_silently;
-				this.fireFromBinding();
-				clearInterval(set_value_loop);
-			} catch (e) {
-				clearInterval(set_value_loop);
-				
-				//Log error to console if this._settings.display_load_errors is true
-				if (this._settings.display_load_errors)
-					this.console_el.print(`On parsing file: ${e.toString()}. The loaded file is not ES6-compatible.`, "error");
-				
-				//Hide Blockly workspace, then clear it
-				this.scene_blockly.hide();
-				this.scene_blockly.enable();
-				js2blocks.parseCode("");
-				this.scene_blockly.disable();
-				
-				//Load the file to the text editor instead (graceful degradation)
-				this.scene_blockly.disable();
-				this.scene_monaco.to_binding_fire_silently = true;
-				this.scene_monaco.v = local_value;
-				delete this.scene_monaco.to_binding_fire_silently;
-				this.fireFromBinding();
 			}
-		});
+		};
+		
+		// If editor is already loaded, update immediately. 
+		// Otherwise, use a one-time check (not a permanent loop)
+		if (this.scene_monaco?.editor) {
+			updateViews();
+		} else {
+			let check_load = setInterval(() => {
+				if (this.scene_monaco?.editor) {
+					updateViews();
+					clearInterval(check_load);
+				}
+			}, 50);
+		}
 	}
 	
+	/**
+	 * Draws the height of the given ScriptManager component.
+	 * - Method of: {@link ve.ScriptManager}
+	 * 
+	 * @private
+	 */
 	_drawHeight () {
-		if (!document.body.contains(this.scene_blockly_el.querySelector("svg"))) return; //Internal guard clause if svg is not currently defined
-		
 		//Declare local instance variables
 		let svg_el = this.scene_blockly_el.querySelector("svg");
 		let svg_rect = svg_el.getBoundingClientRect();
@@ -729,25 +697,46 @@ ve.ScriptManager = class extends ve.Component {
 		}
 	}
 	
+	/**
+	 * Loads a file from the given path.
+	 * - Method of: {@link ve.ScriptManager}
+	 * 
+	 * @alias loadFile
+	 * @memberof ve.Component.ve.ScriptManager
+	 * 
+	 * @param {string} arg0_file_path
+	 * @param {string} arg1_file_data
+	 * @param {boolean} [arg2_do_not_add_to_bottombar=false]
+	 */
 	loadFile (arg0_file_path, arg1_file_data, arg2_do_not_add_to_bottombar) {
 		//Convert from parameters
 		let file_path = path.resolve(arg0_file_path);
 		let file_data = arg1_file_data;
 		let do_not_add_to_bottombar = arg2_do_not_add_to_bottombar;
 		
-		if (!fs.existsSync(file_path)) return; //Internal guard clause if file path doesn't exist
+		if (!fs.existsSync(file_path)) return; //Internal guard clause if file_path doesn't exist
 		
-		//Declare local instance variables
-		try {
-			let actual_file_data = (file_data) ? file_data : fs.readFileSync(file_path, "utf8");
+		//Save: capture state of the file we are leaving
+		if (this._file_path && this.scene_monaco?.editor) {
+			if (!this.config.files[this._file_path]) this.config.files[this._file_path] = {};
+			let file_obj = this.config.files[this._file_path];
 			
+			file_obj.view_state = this.scene_monaco.editor.saveViewState();
+		}
+		
+		try {
+			let actual_file_data = file_data ? file_data : fs.readFileSync(file_path, "utf8");
+			
+			//Update path and value
 			this._file_path = file_path;
 			this.v = actual_file_data;
 			
-			//Load proper syntax highlighting; bottombar
+			//Load extension highlighting
 			ve.ScriptManager._loadFileExtension.call(this, path.extname(this._file_path));
-			if (!do_not_add_to_bottombar)
+			if (!do_not_add_to_bottombar) 
 				this.bottombar_obj.addFile(this._file_path);
+			
+			//Fire from binding
 			this.fireToBinding();
 		} catch (e) {}
 	}
@@ -801,11 +790,11 @@ ve.ScriptManager = class extends ve.Component {
 					this.setCodeEditorTheme(settings_obj.monaco_theme);
 				if (settings_obj.hide_blockly !== undefined) {
 					if (settings_obj.hide_blockly === true) {
-						this.scene_interface.v = {
-							type: "horizontal",
-							monaco: this.scene_monaco
-						};
-						this.scene_blockly.hide();
+						//this.scene_interface.v = {
+						//	type: "horizontal",
+						//	monaco: this.scene_monaco
+						//};
+						//this.scene_blockly.hide();
 					} else {
 						this.scene_interface.v = {
 							type: "horizontal",
@@ -927,7 +916,7 @@ ve.ScriptManager = class extends ve.Component {
 		let error = arg0_error;
 		
 		//Instantiate load message popup
-		veWindow(`${loc("ve.registry.localisation.error_compatibility", (this.options.compatibility_message) ? this.options.compatibility_message : "ES6")}<br><br><div style = "align-items: center; display: flex;"><icon>warning</icon>&nbsp;${error}</div><br><b>${loc("ve.registry.localisation.ScriptManager_stack_trace")}</b><br><div style = "margin-left: 1rem;">${error.stack}</div>`, {
+		veWindow(`${loc("ve.registry.localisation.ScriptManager_error_compatibility", (this.options.compatibility_message) ? this.options.compatibility_message : "ES6")}<br><br><div style = "align-items: center; display: flex;"><icon>warning</icon>&nbsp;${error}</div><br><b>${loc("ve.registry.localisation.ScriptManager_stack_trace")}</b><br><div style = "margin-left: 1rem;">${error.stack}</div>`, {
 			name: loc("ve.registry.localisation.ScriptManager_error_reading_file"),
 			width: "24rem"
 		});

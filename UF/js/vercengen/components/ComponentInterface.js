@@ -189,8 +189,9 @@ ve.Interface = class extends ve.Component {
 		//Iterate over all extant this.components_obj and remove all their elements
 		Object.iterate(this.components_obj, (local_key, local_value) => {
 			try {
-				if (local_value.element.parentElement)
-					local_value.element.parentElement.removeChild(local_value.element);
+				if (local_value.element)
+					if (local_value.element.parentElement)
+						local_value.element.parentElement.removeChild(local_value.element);
 			} catch (e) { console.error(e); }
 		});
 		
@@ -347,6 +348,7 @@ ve.Interface = class extends ve.Component {
 	
 	/**
 	 * Returns the current `.dimensions` [width, height] of defined components prior to assigning coordinates to non-defined coordinates.
+	 * - Static method of: {@link ve.Interface}
 	 *
 	 * @alias #getDefinedComponentDimensions
 	 * @memberof ve.Component.ve.Interface

@@ -8,6 +8,10 @@
  * - `arg0_value`: {@link Array}<{@link Array}<{@link any}>> 
  *   - Nested arrays: [n1] - Sheet, [n2] - Row
  * - `arg1_options`: {@link Object}
+ *   - `.non_sortable_columns`: {@link number} - The indices that shouldn't be sortable.
+ *   - `.oncellclick`: {@link function}(v:{@link Array}<{@link any}>, e:{@link Event})
+ *   - `.onrowclick`: {@link function}(v:{@link any}, e:{@link Event})
+ *   - `.page_sizes=ve.registry.settings.Table.page_sizes`: {@link number[]} - Set by default to [10, 20, 50, 100].
  *   - `.page_size=50`: {@link number}
  *   - `.sortable=true`: {@link boolean}
  *   - `.sort_ascending=true`: {@link boolean}
@@ -47,7 +51,9 @@ ve.Table = class extends ve.Component {
 		
 		//Initialise options
 		options.attributes = (options.attributes) ? options.attributes : {};
+		options.non_sortable_columns = (options.non_sortable_columns) ? options.non_sortable_columns : [];
 		options.page_size = Math.returnSafeNumber(options.page_size, 50);
+		options.page_sizes = ve.registry.settings.Table.page_sizes;
 		options.sortable = (options.sortable !== undefined) ? options.sortable : true;
 		options.sort_ascending = (options.sort_ascending !== undefined) ? 
 			options.sort_ascending : true;
@@ -117,8 +123,10 @@ ve.Table = class extends ve.Component {
 	 * @returns {ve.Spreadsheet}
 	 */
 	convertToSpreadsheet () {
-		const current_data = [this.v]; // Wrap 2D Table data into 3D Spreadsheet format
+		//Declare local instance variables
+		let current_data = [this.v]; //Wrap 2D Table data into 3D Spreadsheet format
 		
+		//Initialise ve.Spreadsheet component
 		if (!this.spreadsheet_component) {
 			// Create the counterpart and link them
 			this.spreadsheet_component = new ve.Spreadsheet(current_data, this.options);
@@ -129,10 +137,11 @@ ve.Table = class extends ve.Component {
 			setTimeout(() => this.spreadsheet_component.v = current_data, 1000);
 		}
 		
-		// Swap DOM
+		//Swap DOM
 		if (this.element.parentNode)
 			this.element.replaceWith(this.spreadsheet_component.element);
 		
+		//Return statement
 		return this.spreadsheet_component;
 	}
 	
@@ -143,10 +152,10 @@ ve.Table = class extends ve.Component {
 	 * @alias convertToTable
 	 * @memberof ve.Component.ve.Table
 	 * 
-	 * @returns {ve.Table}
+	 * @returns {ve.Table|ve.Component.Table}
 	 */
 	convertToTable () {
-		// If we are coming back from a spreadsheet, sync the data first
+		//If we are coming back from a spreadsheet, sync the data first
 		if (this.spreadsheet_component) {
 			const spreadsheet_data = this.spreadsheet_component.convertToArray();
 			if (spreadsheet_data && spreadsheet_data[0])
@@ -156,6 +165,8 @@ ve.Table = class extends ve.Component {
 			if (this.spreadsheet_component.element.parentNode)
 				this.spreadsheet_component.element.replaceWith(this.element);
 		}
+		
+		//Return statement
 		return this;
 	}
 	
@@ -166,7 +177,7 @@ ve.Table = class extends ve.Component {
 	 * @alias draw
 	 * @memberof ve.Component.ve.draw
 	 * 
-	 * @returns {ve.Table}
+	 * @returns {ve.Table|undefined}
 	 */
 	draw () {
 		//Clear .innerHTML
@@ -174,7 +185,7 @@ ve.Table = class extends ve.Component {
 		
 		//Internal guard clause if this._headers is empty
 		if (this._headers.length === 0) {
-			this.element.innerHTML = `<p>No data available.</p>`;
+			this.element.innerHTML = `<p>${loc("ve.registry.localisation.Table_no_data")}</p>`;
 			return;
 		}
 		
@@ -190,7 +201,7 @@ ve.Table = class extends ve.Component {
 				local_th_el.innerHTML = local_text;
 				
 			//Sortable handling
-			if (this.options.sortable) {
+			if (this.options.sortable && !this.options.non_sortable_columns.includes(i)) {
 				local_th_el.style.cursor = "pointer";
 				local_th_el.addEventListener("click", () => this.sort(i));
 				if (this.options.sort_column === i)
@@ -211,10 +222,30 @@ ve.Table = class extends ve.Component {
 			let local_tr_el = document.createElement("tr");
 			
 			row_data.forEach((cell_data) => {
+				//Push cell
 				let local_td_el = document.createElement("td");
-					local_td_el.innerHTML = cell_data;
+					if (cell_data instanceof HTMLElement) {
+						local_td_el.appendChild(cell_data);
+					} else {
+						local_td_el.innerHTML = cell_data;
+					}
+					
+				//oncellclick handler
+				if (this.options.oncellclick)
+					local_td_el.addEventListener("click", (e) => {
+						this.options.oncellclick(cell_data, e);
+					});
+				
+				//Push row
 				local_tr_el.appendChild(local_td_el);
 			});
+			
+			//onrowclick handler
+			if (this.options.onrowclick)
+				local_tr_el.addEventListener("click", (e) => {
+					this.options.onrowclick(row_data, e);
+				});
+			
 			tbody_el.appendChild(local_tr_el);
 		});
 		table_el.appendChild(tbody_el);
@@ -227,7 +258,7 @@ ve.Table = class extends ve.Component {
 	 * - Method of: {@link ve.Table}
 	 * 
 	 * @alias drawPages
-	 * @memberof ve.Component.ve.drawPages
+	 * @memberof ve.Component.ve.Table
 	 * 
 	 * @returns {ve.Table}
 	 */
@@ -235,12 +266,28 @@ ve.Table = class extends ve.Component {
 		//Declare local instance variables
 		let total_pages = Math.ceil(this._rows.length/this.options.page_size);
 		
-		if (total_pages <= 1) return; //Internal guard clause if there is only one page
-		
 		//Declare local instance variables
 		let current_page_label = document.createElement("span");
 			current_page_label.className = "label-current-page";
-			current_page_label.innerHTML = `Page ${String.formatNumber(this.current_page + 1)} of ${String.formatNumber(total_pages)}`;
+			current_page_label.style.display = "inline-flex";
+			
+			let current_page_number = new ve.Number(this.current_page + 1, {
+				attributes: {
+					size: Math.returnSafeNumber((this.current_page + 1).toString().length, 1) + 1
+				},
+				name: loc("ve.registry.localisation.Table_page"),
+				max: total_pages,
+				min: 1,
+				onuserchange: (v, e) => {
+					this.current_page = v - 1;
+					this.draw();
+				}
+			});
+			current_page_number.element.querySelector("input").style.minWidth = "auto";
+			current_page_number.bind(current_page_label);
+			
+			let max_label = new ve.HTML(loc("ve.registry.localisation.Table_page_of_max", String.formatNumber(total_pages)));
+			max_label.bind(current_page_label);
 		let nav_el = document.createElement("div");
 			nav_el.className = "pagination-controls";
 			nav_el.style.marginTop = "var(--cell-padding)";
@@ -252,7 +299,7 @@ ve.Table = class extends ve.Component {
 				[(this.current_page >= total_pages + 1) ? "disabled" : "enabled"]: true,
 				id: "next-button"
 			},
-			name: "Next"
+			name: loc("ve.registry.localisation.Table_next")
 		});
 		let prev_btn = new ve.Button(() => {
 			this.current_page--;
@@ -262,42 +309,129 @@ ve.Table = class extends ve.Component {
 				[(this.current_page === 0) ? "disabled" : "enabled"]: true,
 				id: "previous-button"
 			},
-			name: "Previous" 
+			name: loc("ve.registry.localisation.Table_previous")
 		});
 		
 		prev_btn.bind(nav_el);
 		nav_el.appendChild(current_page_label);
 		next_btn.bind(nav_el);
+		
+		//Page size handler
+		if (this.options.page_sizes) {
+			let select_btn = new ve.Select(this.options.page_sizes, {
+				name: loc("ve.registry.localisation.Table_max_per_page"),
+				selected: this.options.page_size.toString(),
+				
+				onuserchange: (v) => {
+					//Declare local instance variables
+					let old_page_size = this.options.page_size;
+					let new_page_size = parseInt(v);
+					
+					let first_item_index = this.current_page*old_page_size;
+					
+					this.options.page_size = new_page_size;
+					this.current_page = Math.floor(first_item_index/new_page_size);
+					this.draw();
+				}
+			});
+			
+			select_btn.bind(nav_el);
+		}
+		
 		this.element.appendChild(nav_el);
 	}
 	
 	/**
-	 * Sorts the current Table component and calls this.draw().
+	 * Returns the current view state of the component.
+	 * - Method of: {@link ve.Table}
+	 * 
+	 * @alias getViewState
+	 * @memberof ve.Component.ve.Table
+	 * 
+	 * @returns {{current_page: number, items_per_page: number, sort_ascending: boolean, sort_column: number|undefined}}
+	 */
+	getViewState () {
+		//Return statement
+		return {
+			current_page: this.current_page,
+			items_per_page: this.options.page_size,
+			sort_ascending: this.options.sort_ascending,
+			sort_column: this.options.sort_column
+		};
+	}
+	
+	/**
+	 * Sets the view state from an existing view object.
+	 * 
+	 * @param {Object} arg0_view_obj
+	 */
+	setViewState (arg0_view_obj) {
+		//Convert from parameters
+		let view_obj = (arg0_view_obj) ? arg0_view_obj : {};
+		
+		//Set options and render
+		if (view_obj.current_page !== undefined) this.current_page = view_obj.current_page;
+		if (view_obj.items_per_page !== undefined) this.options.page_size = view_obj.items_per_page;
+		if (view_obj.sort_column !== undefined) {
+			if (view_obj.sort_ascending !== undefined) this.options.sort_ascending = view_obj.sort_ascending;
+			this.sort(view_obj.sort_column, { do_not_change_sort_order: true });
+		} else {
+			this.draw();
+		}
+	}
+	
+	/**
+	 * Sorts the current Table component and calls this.draw(). If the value is an HTMLElement with attribute 'data-value', it will use that to sort instead of innerHTML.
 	 * - Method of: {@link ve.Table}
 	 * 
 	 * @alias sort
-	 * @memberof ve.Component.ve.sort
+	 * @memberof ve.Component.ve.Table
 	 * 
-	 * @param {number} arg0_index
+	 * @param {number} [arg0_index]
+	 * @param {Object} [arg1_options]
+	 *  @param {boolean} [arg1_options.do_not_change_sort_order=false]
 	 */
-	sort (arg0_index) {
+	sort (arg0_index, arg1_options) {
 		//Convert from parameters
 		let index = Math.returnSafeNumber(arg0_index);
+		let options = (arg1_options) ? arg1_options : {};
 		
-		if (!this.options.sortable) return; //Internal guard clause if table is not sortable
+		if (!this.options.sortable || this.options.non_sortable_columns.includes(index)) 
+			return; //Internal guard clause if table is not sortable
 		
 		//Declare local instance variables
+    let getSortValue = (local_value) => {
+      //Declare local instance variables
+      let sort_value = local_value;
+
+      if (local_value instanceof HTMLElement) {
+        let data_value = local_value.getAttribute("data-value");
+
+        if (data_value) {
+          sort_value = data_value;
+        } else {
+          sort_value = local_value.innerHTML;
+        }
+      }
+
+      //Return statement
+      return sort_value;
+    };
+
 		if (this.options.sort_column === index) {
-			this.options.sort_ascending = (!this.options.sort_ascending);
+			if (!options.do_not_change_sort_order)
+				this.options.sort_ascending = (!this.options.sort_ascending);
 		} else {
 			this.options.sort_column = index;
-			this.options.sort_ascending = true;
+			
+			if (!options.do_not_change_sort_order)
+				this.options.sort_ascending = true;
 		}
 		
 		//Sort rows
 		this._rows.sort((a, b) => {
-			let a_value = a[index];
-			let b_value = b[index];
+			let a_value = getSortValue(a[index]);
+			let b_value = getSortValue(b[index]);
 			
 			//Attempt numeric sort if possible
 			let a_number = parseFloat(a_value);
@@ -319,6 +453,9 @@ ve.Table = class extends ve.Component {
 
 //Functional binding
 
+/**
+ * {@returns ve.Table}
+ */
 veTable = function () {
 	//Return statement
 	return new ve.Table(...arguments);
